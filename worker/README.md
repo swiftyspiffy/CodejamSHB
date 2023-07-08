@@ -5,7 +5,7 @@ Worker is a Cloudflare Worker that handles API calls from Pomodoro extension. Th
 1. If you haven't already, clone the CodejamSHB project.
 2. `cd` into the worker directory (`CodejamSHB/worker`)
 3. Run `npm install` to get project dependencies
-4. Create a new file `.dev.vars`, and add the contents `EXTENSION_SECRET = "<extension_secret>" (get <extension_secret> value from swifty)
+4. Create a new file `.dev.vars`, and add the contents `EXTENSION_SECRET = "<extension_secret>"` (get <extension_secret> value from swifty)
 
 ### Daily Flow
 1. `cd` into the worker directory (`CodejamSHB/worker`)
