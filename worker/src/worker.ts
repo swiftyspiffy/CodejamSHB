@@ -1,4 +1,4 @@
-import { Authorization, AuthorizationResponse } from "./auth";
+import { Authorization, JWTPayload } from "./auth";
 
 export interface Env {
 	EXTENSION_SECRET: string
@@ -16,22 +16,51 @@ export default {
 	 * @returns https://developers.cloudflare.com/workers/runtime-apis/response/
 	 */
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-		// sanity check the request coming in
-		const [isValidRequest, unsuccessfulReason] = this.validateRequest(request);
+		// for debugging, dump headers
+		console.log(new Map(request.headers));
+		// sanity check the request coming in, also parse the action being requested
+		console.log("validating request");
+		const [isValidRequest, action, notValidRequestReason] = this.validateRequest(request);
 		if (!isValidRequest) {
-			return this.ret(false, unsuccessfulReason);
+			console.log("invalid request: " + notValidRequestReason);
+			return this.ret(false, notValidRequestReason);
 		}
 		
 		// sanity check and parse the JWT token (we know jwt header exists because request validation passed)
-		const [isValidJWT, authorization] = Authorization.ValidateJWT(request.headers.get(HEADER_EXTENSION_JWT)!);
+		console.log("verifying jwt");
+		const [isValidJWT, authorization, notValidJWTReason] = Authorization.VerifyJWT(request.headers.get(HEADER_EXTENSION_JWT)!, env.EXTENSION_SECRET);
 		if (!isValidJWT) {
-			return this.ret(false, "invalid JWT");
+			console.log("invalid jwt: " + notValidJWTReason);
+			return this.ret(false, notValidJWTReason);
 		}
 
-		return this.ret(true, {
-			msg: "you authorized!",
-			authorization: authorization,
-		});
+		// switch on action to determine what action we'll take
+		console.log("handling action: " + action);
+		switch(action) {
+			case "get_pomodoros":
+				// TODO: handle action.get_pomodoros
+				return this.ret(true, {
+					msg: "pomodors would be here",
+					authorization: authorization
+				});
+			case "put_pomodoro":
+				// TODO: handle action.put_pomodoro
+				return this.ret(true, {
+					msg: "confirmation of put pomodoro here",
+					authorization: authorization
+				});
+			case "update_pomodoro":
+				// TODO: handle action.update_pomodoro
+				return this.ret(true, {
+					msg: "confirmation of updated pomodoro here",
+					authorization: authorization
+				});
+			default:
+				return this.ret(false, {
+					msg: "unknown action: " + action,
+					authorization: authorization
+				});
+		}
 	},
 
 
@@ -40,19 +69,19 @@ export default {
 	 * @param request https://developers.cloudflare.com/workers/runtime-apis/request/
 	 * @returns boolean: whether or not request is valid, string: reason for invalid
 	 */
-	validateRequest(request: Request): [boolean, string] {
+	validateRequest(request: Request): [boolean, string, string] {
 		// check jwt exists
 		if (request.headers.get(HEADER_EXTENSION_JWT) == null) {
-			return [false, "no jwt header provided"];
+			return [false, "", "no jwt header provided"];
 		}
 		// check that an action exists
 		const { searchParams } = new URL(request.url);
 		const action = searchParams.get('action');
 		if(typeof action == 'undefined' || !action) {
-			return [false, "action parameter was not set or empty"];
+			return [false, "", "action parameter was not set or empty"];
 		}
 
-		return [true, ""];
+		return [true, action, ""];
 	},
 
 	/**
