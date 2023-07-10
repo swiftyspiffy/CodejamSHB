@@ -1,6 +1,11 @@
 ### Overview
 Worker is a Cloudflare Worker that handles API calls from Pomodoro extension. The worker is a typescript application that expects a request from the Twitch Extension (that is to say, requests should have a valid JWT via Authorization header). Based on the request, the worker will either return existing Pomodoros for presentation, or will add/update an existing pomodoro.
 
+The worker can be accessed by hitting the following endpoint:
+```
+https://worker.swiftyspiffy.workers.dev/
+```
+
 ### Local Setup
 1. If you haven't already, clone the CodejamSHB project.
 2. `cd` into the worker directory (`CodejamSHB/worker`)
@@ -12,3 +17,6 @@ Worker is a Cloudflare Worker that handles API calls from Pomodoro extension. Th
 2. Start the local development server: `npx wrangler dev`. If successful, you should get a message indicating its listening on 127.0.0.1, and some key options. Also, there should be a message indicating EXTENSION_SECRET variable is binded.
 3. Hit the `b` key, and your browser should launch a tab with the localhost endpoint.
 4. Make changes to the `src/` directory and save. The changes should automatically be live, so a refresh will show them.
+
+### Hitting the Worker
+TODO (basically, use PostMan or something similar to hit the above endpoint with a correctly configured request). I'll update this section of the README once I have a working sample request.
