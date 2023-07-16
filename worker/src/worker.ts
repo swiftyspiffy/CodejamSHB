@@ -1,9 +1,13 @@
 import { Authorization, JWTPayload } from "./auth";
+import { DBPomodoro, DBPomodoroState, DBPomodoroStatus, DBPomodoroTask, DBPomodoroTaskStatus, Db } from "./db";
 
 export interface Env {
 	EXTENSION_SECRET: string
+	AWS_ACCESS_KEY: string
+	AWS_SECRET_KEY: string
 }
 
+const ENFORCE_JWT = false;
 const HEADER_EXTENSION_JWT = "X-Extension-Jwt";
 const PARAM_ACTION = "action";
 
@@ -28,33 +32,33 @@ export default {
 		
 		// sanity check and parse the JWT token (we know jwt header exists because request validation passed)
 		console.log("verifying jwt");
-		const [isValidJWT, authorization, notValidJWTReason] = Authorization.VerifyJWT(request.headers.get(HEADER_EXTENSION_JWT)!, env.EXTENSION_SECRET);
+		const [isValidJWT, authorization, notValidJWTReason] = ENFORCE_JWT 
+			? Authorization.VerifyJWT(request.headers.get(HEADER_EXTENSION_JWT)!, env.EXTENSION_SECRET)
+			: [true, { Exp: 123123123,
+				OpaqueUserId: "user-123123123",
+				UserId: "40876073",
+				ChannelId: "410885037",
+				Role: "user",
+				IsUnlinked: false,
+				PubsubPerms: {} } as JWTPayload, ""];
 		if (!isValidJWT) {
 			console.log("invalid jwt: " + notValidJWTReason);
 			return this.ret(false, notValidJWTReason);
 		}
 
+		// we can safely cast to non-null since we've already checked for error
+		const auth = authorization!
+
+		// create dynamo dao
+		const dbClient = new Db(env.AWS_ACCESS_KEY, env.AWS_SECRET_KEY);
+
 		// switch on action to determine what action we'll take
 		console.log("handling action: " + action);
 		switch(action) {
-			case "get_pomodoros":
-				// TODO: handle action.get_pomodoros
-				return this.ret(true, {
-					msg: "pomodors would be here",
-					authorization: authorization
-				});
+			case "list_pomodoros":
+				return await this.handleListPomodoros(dbClient, auth);
 			case "put_pomodoro":
-				// TODO: handle action.put_pomodoro
-				return this.ret(true, {
-					msg: "confirmation of put pomodoro here",
-					authorization: authorization
-				});
-			case "update_pomodoro":
-				// TODO: handle action.update_pomodoro
-				return this.ret(true, {
-					msg: "confirmation of updated pomodoro here",
-					authorization: authorization
-				});
+				return await this.handlePutPomodoro(dbClient, auth, request);
 			default:
 				return this.ret(false, {
 					msg: "unknown action: " + action,
@@ -63,6 +67,88 @@ export default {
 		}
 	},
 
+	/**
+	 * Helper method handles the action of putting a Twitch user's pomodoro into the database (`put_pomodoro`), which
+	 * also means overwriting an existing entry. This method will also handle dispathcing updates to the Twitch pubsub
+	 * to notify all extensions in a given channel of a change in a given pomodoro.
+	 * @param dbClient 
+	 * @param auth 
+	 * @returns 
+	 */
+	async handlePutPomodoro(dbClient: Db, auth: JWTPayload, request: Request): Promise<Response> {
+		// force the extension to send POST request
+		if(request.method != "POST") {
+			return this.ret(false, "request must be POST");
+		}
+
+		// force the extension to send form body
+		if(request.headers.get("content-type") != "form") {
+			return this.ret(false, "expected body content-type of form");
+		}
+
+		const form = await request.formData();
+		const putStreamPomodoroWasSuccessful = dbClient.PutStreamPomodoro({
+			TwitchStreamerId: auth.ChannelId,
+			TwitchUserId: auth.UserId,
+			PomodoroState: this.parseFormDataForPutPomodoro(form)
+		} as DBPomodoro);
+		if(!putStreamPomodoroWasSuccessful) {
+			console.log("put stream pomodoro was unsuccessful");
+			return this.ret(false, "failed to put stream pomodoro");
+		}
+		// TODO: implement Twitch pubsub notification for modified pomodoro to alert all extension clients of updated
+		// pomodoro
+		return this.ret(true, {
+			msg: "successful",
+			authorization: auth
+		});
+	},
+
+	/**
+	 * Helper method handles the action of getting pomodoros (`get_pomodoros`), which returns active pomodoros for
+	 * a specified channel.
+	 * @param dbClient DynamoDB client wrapper.
+	 * @param auth Authorization data as provided by Twitch extension.
+	 * @returns Resposne
+	 */
+	async handleListPomodoros(dbClient: Db, auth: JWTPayload): Promise<Response> {
+		const [listStreamPomodorosWasSuccessful, dbPomodoros] = dbClient.ListStreamPomodoros(auth.ChannelId);
+		if (!listStreamPomodorosWasSuccessful) {
+			console.log("list stream pomodoros was unsuccessful");
+			return this.ret(false, "failed to get stream pomodoros");
+		}
+		return this.ret(true, {
+			msg: dbPomodoros,
+			authorization: auth
+		});
+	},
+
+	/**
+	 * Helper method that converts a FromData type (which is what the Twitch Extension request is presented to us
+	 * as), and converts it to a DBPomodoroState, which we can then pass to our database client.
+	 * @param form Awaited form data coming from the request.
+	 * @returns DBPomodoroState
+	 */
+	parseFormDataForPutPomodoro(form: FormData): DBPomodoroState {
+		const tasksJson = JSON.parse(form.get("tasks") ?? "[]");
+		let tasks: DBPomodoroTask[];
+		tasksJson.forEach((task: { status: string | DBPomodoroTaskStatus; title: any; }) => {
+			tasks.push({
+				Status: task.status = "AWAITING"
+					? DBPomodoroTaskStatus.Awaiting
+					: task.status == "IN_PROGRESS"
+						? DBPomodoroTaskStatus.InProgress
+						: DBPomodoroTaskStatus.Completed,
+				Title: task.title
+			} as DBPomodoroTask)
+		});
+		const state: DBPomodoroState = {
+            Status: DBPomodoroStatus.Active,
+            EndsAt: (+new Date / 1000) + (parseInt(form.get("ends_in") ?? "0")),
+            Tasks: tasks!,
+        }
+        return state;
+	},
 
 	/**
 	 * Helper method that determines whether the request is valid and should be handled or not.
@@ -71,7 +157,7 @@ export default {
 	 */
 	validateRequest(request: Request): [boolean, string, string] {
 		// check jwt exists
-		if (request.headers.get(HEADER_EXTENSION_JWT) == null) {
+		if (request.headers.get(HEADER_EXTENSION_JWT) == null && ENFORCE_JWT) {
 			return [false, "", "no jwt header provided"];
 		}
 		// check that an action exists
@@ -99,7 +185,10 @@ export default {
 			JSON.stringify(structuredResponse, null, 2),
 			{
 				headers: {
-					"content-type": "application/json;charset=UTF-8"
+					"content-type": "application/json;charset=UTF-8",
+					"access-control-allow-origin": "*",
+					"access-control-allow-methods": "*",
+					"access-control-allow-headers": "*"
 				}
 			}
 		)
