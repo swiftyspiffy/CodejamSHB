@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import Pomodoros from "./scenes/Pomodoro";
 
 import "./App.css";
 
@@ -72,16 +73,16 @@ function App() {
           }
 
           if (timer.mode === "focus" && timer.time === timer.duration) {
-            console.log(timer.currPomo + 1);
-            console.log(timer.longBreakInterval);
-            console.log((timer.currPomo + 1) % timer.longBreakInterval);
-            console.log(
+            //console.log(timer.currPomo + 1);
+            //console.log(timer.longBreakInterval);
+            //console.log((timer.currPomo + 1) % timer.longBreakInterval);
+            /*console.log(
               `changing from focus to ${
                 (timer.currPomo + 1) % timer.longBreakInterval === 0
                   ? "long break"
                   : "short break"
               }`
-            );
+            );*/
             return {
               ...timer,
               mode:
@@ -95,7 +96,7 @@ function App() {
             timer.mode === "short break" &&
             timer.time === timer.shortBreak
           ) {
-            console.log("changing from short break to focus");
+            //console.log("changing from short break to focus");
             return {
               ...timer,
               mode: "focus",
@@ -105,7 +106,7 @@ function App() {
             timer.mode === "long break" &&
             timer.time === timer.longBreak
           ) {
-            console.log("changing from long break to focus");
+            //console.log("changing from long break to focus");
             return {
               ...timer,
               mode: "focus",
@@ -159,7 +160,7 @@ function App() {
     if (newName.split(" ")[0] === "!claim") {
       const result = dissectString(newName);
       setMessages((prevMessages) => [...prevMessages, newName]);
-      console.log(result);
+      //console.log(result);
       if (!nameSet.has(result.userName)) {
         setTimers((prevTimers) => [
           ...prevTimers,
@@ -190,7 +191,7 @@ function App() {
   }
 
   function dissectString(input) {
-    console.log(input);
+    //console.log(input);
     const result = [];
     let currentWord = "";
     let inQuotes = false;
@@ -218,7 +219,7 @@ function App() {
       result.push(currentWord);
     }
 
-    console.log(result);
+    //console.log(result);
 
     let ans = {};
 
@@ -232,7 +233,7 @@ function App() {
     ans.longBreakInterval = parseInt(result[7]);
     ans.currPomo = 0;
 
-    console.log(ans);
+    //console.log(ans);
 
     return ans;
   }
@@ -320,9 +321,6 @@ function App() {
           <div />
           <button
             className="w-full rounded bg-orange-400 transition-colors duration-150 hover:bg-orange-500 px-5 py-2 mb-2"
-            id="personalView"
-            isViewActive={isViewActive}
-            setIsViewActive={setIsViewActive}
             onClick={() => handleViewClick("personalView")}
           >
             Personal
@@ -353,7 +351,7 @@ function App() {
               overflowY: "auto",
             }}
           >
-            <div className="communityView m-5" isViewActive={isViewActive}>
+            <div className="communityView m-5">
               <div className="w-full mb-5">
                 <h2 className="font-2xl font-bold text-center">
                   Active Pomodoros in this Community
@@ -362,6 +360,8 @@ function App() {
 
               <div className="grid grid-cols-2 gap-5">
                 <CommunityPomodoroView />
+                <Pomodoros />{" "}
+                {/* fetched pomodoro, will replace data in CommunityPomodoroView */}
               </div>
             </div>
           </div>
