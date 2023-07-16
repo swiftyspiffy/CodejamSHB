@@ -49,3 +49,5 @@ compatibility_date = "2023-06-28"
 # [[migrations]]
 # tag = "v1"
 # new_classes = ["MyDurableObject"]
+
+node_compat = true
