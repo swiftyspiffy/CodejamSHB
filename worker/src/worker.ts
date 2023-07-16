@@ -1,5 +1,5 @@
 import { Authorization, JWTPayload } from "./auth";
-import { DBPomodoro, DBPomodoroState, DBPomodoroStatus, Db } from "./db";
+import { DBPomodoro, DBPomodoroState, DBPomodoroStatus, DBPomodoroTask, DBPomodoroTaskStatus, Db } from "./db";
 
 export interface Env {
 	EXTENSION_SECRET: string
@@ -87,7 +87,7 @@ export default {
 		}
 
 		const form = await request.formData();
-		const putStreamPomodoroWasSuccessful = dbClient.PutStreamPomodoroDemo({
+		const putStreamPomodoroWasSuccessful = dbClient.PutStreamPomodoro({
 			TwitchStreamerId: auth.ChannelId,
 			TwitchUserId: auth.UserId,
 			PomodoroState: this.parseFormDataForPutPomodoro(form)
@@ -96,7 +96,8 @@ export default {
 			console.log("put stream pomodoro was unsuccessful");
 			return this.ret(false, "failed to put stream pomodoro");
 		}
-		// TODO: implement Twitch pubsub notification for modified pomodoro
+		// TODO: implement Twitch pubsub notification for modified pomodoro to alert all extension clients of updated
+		// pomodoro
 		return this.ret(true, {
 			msg: "successful",
 			authorization: auth
@@ -111,12 +112,11 @@ export default {
 	 * @returns Resposne
 	 */
 	async handleListPomodoros(dbClient: Db, auth: JWTPayload): Promise<Response> {
-		const [listStreamPomodorosWasSuccessful, dbPomodoros] = dbClient.ListStreamPomodorosDemo(auth.ChannelId);
+		const [listStreamPomodorosWasSuccessful, dbPomodoros] = dbClient.ListStreamPomodoros(auth.ChannelId);
 		if (!listStreamPomodorosWasSuccessful) {
 			console.log("list stream pomodoros was unsuccessful");
 			return this.ret(false, "failed to get stream pomodoros");
 		}
-		// TODO: filter out pomodoros that have since expired before returning them
 		return this.ret(true, {
 			msg: dbPomodoros,
 			authorization: auth
@@ -130,13 +130,24 @@ export default {
 	 * @returns DBPomodoroState
 	 */
 	parseFormDataForPutPomodoro(form: FormData): DBPomodoroState {
-		// TODO: Implement parseFormDataForPomodoro
-		const fake: DBPomodoroState = {
+		const tasksJson = JSON.parse(form.get("tasks") ?? "[]");
+		let tasks: DBPomodoroTask[];
+		tasksJson.forEach((task: { status: string | DBPomodoroTaskStatus; title: any; }) => {
+			tasks.push({
+				Status: task.status = "AWAITING"
+					? DBPomodoroTaskStatus.Awaiting
+					: task.status == "IN_PROGRESS"
+						? DBPomodoroTaskStatus.InProgress
+						: DBPomodoroTaskStatus.Completed,
+				Title: task.title
+			} as DBPomodoroTask)
+		});
+		const state: DBPomodoroState = {
             Status: DBPomodoroStatus.Active,
-            EndsAt: 0,
-            Tasks: [],
+            EndsAt: (+new Date / 1000) + (parseInt(form.get("ends_in") ?? "0")),
+            Tasks: tasks!,
         }
-        return fake
+        return state;
 	},
 
 	/**
