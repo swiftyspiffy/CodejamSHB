@@ -1,5 +1,5 @@
 import { Authorization, JWTPayload } from "./auth";
-import { DBPomodoro, Db } from "./db";
+import { DBPomodoro, DBPomodoroState, DBPomodoroStatus, Db } from "./db";
 
 export interface Env {
 	EXTENSION_SECRET: string
@@ -32,12 +32,18 @@ export default {
 		
 		// sanity check and parse the JWT token (we know jwt header exists because request validation passed)
 		console.log("verifying jwt");
-		const [isValidJWT, authorization, notValidJWTReason] = Authorization.VerifyJWT(request.headers.get(HEADER_EXTENSION_JWT)!, env.EXTENSION_SECRET);
+		const [isValidJWT, authorization, notValidJWTReason] = ENFORCE_JWT 
+			? Authorization.VerifyJWT(request.headers.get(HEADER_EXTENSION_JWT)!, env.EXTENSION_SECRET)
+			: [true, { Exp: 123123123,
+				OpaqueUserId: "user-123123123",
+				UserId: "40876073",
+				ChannelId: "410885037",
+				Role: "user",
+				IsUnlinked: false,
+				PubsubPerms: {} } as JWTPayload, ""];
 		if (!isValidJWT) {
 			console.log("invalid jwt: " + notValidJWTReason);
-			if(ENFORCE_JWT) {
-				return this.ret(false, notValidJWTReason);
-			}
+			return this.ret(false, notValidJWTReason);
 		}
 
 		// we can safely cast to non-null since we've already checked for error
@@ -49,10 +55,10 @@ export default {
 		// switch on action to determine what action we'll take
 		console.log("handling action: " + action);
 		switch(action) {
-			case "get_pomodoros":
-				return this.handleGetPomodoros(dbClient, auth);
+			case "list_pomodoros":
+				return await this.handleListPomodoros(dbClient, auth);
 			case "put_pomodoro":
-				return this.handlePutPomodoro(dbClient, auth, request);
+				return await this.handlePutPomodoro(dbClient, auth, request);
 			default:
 				return this.ret(false, {
 					msg: "unknown action: " + action,
@@ -69,7 +75,7 @@ export default {
 	 * @param auth 
 	 * @returns 
 	 */
-	handlePutPomodoro(dbClient: Db, auth: JWTPayload, request: Request): Response {
+	async handlePutPomodoro(dbClient: Db, auth: JWTPayload, request: Request): Promise<Response> {
 		// force the extension to send POST request
 		if(request.method != "POST") {
 			return this.ret(false, "request must be POST");
@@ -80,10 +86,11 @@ export default {
 			return this.ret(false, "expected body content-type of form");
 		}
 
-		const putStreamPomodoroWasSuccessful = dbClient.PutStreamPomodoro({
+		const form = await request.formData();
+		const putStreamPomodoroWasSuccessful = dbClient.PutStreamPomodoroDemo({
 			TwitchStreamerId: auth.ChannelId,
 			TwitchUserId: auth.UserId,
-
+			PomodoroState: this.parseFormDataForPutPomodoro(form)
 		} as DBPomodoro);
 		if(!putStreamPomodoroWasSuccessful) {
 			console.log("put stream pomodoro was unsuccessful");
@@ -103,10 +110,10 @@ export default {
 	 * @param auth Authorization data as provided by Twitch extension.
 	 * @returns Resposne
 	 */
-	handleGetPomodoros(dbClient: Db, auth: JWTPayload): Response {
-		const [getStreamPomodorosWasSuccessful, dbPomodoros] = dbClient.GetStreamPomodoros(auth.ChannelId);
-		if (!getStreamPomodorosWasSuccessful) {
-			console.log("get stream pomodoros was unsuccessful");
+	async handleListPomodoros(dbClient: Db, auth: JWTPayload): Promise<Response> {
+		const [listStreamPomodorosWasSuccessful, dbPomodoros] = dbClient.ListStreamPomodorosDemo(auth.ChannelId);
+		if (!listStreamPomodorosWasSuccessful) {
+			console.log("list stream pomodoros was unsuccessful");
 			return this.ret(false, "failed to get stream pomodoros");
 		}
 		// TODO: filter out pomodoros that have since expired before returning them
@@ -117,13 +124,29 @@ export default {
 	},
 
 	/**
+	 * Helper method that converts a FromData type (which is what the Twitch Extension request is presented to us
+	 * as), and converts it to a DBPomodoroState, which we can then pass to our database client.
+	 * @param form Awaited form data coming from the request.
+	 * @returns DBPomodoroState
+	 */
+	parseFormDataForPutPomodoro(form: FormData): DBPomodoroState {
+		// TODO: Implement parseFormDataForPomodoro
+		const fake: DBPomodoroState = {
+            Status: DBPomodoroStatus.Active,
+            EndsAt: 0,
+            Tasks: [],
+        }
+        return fake
+	},
+
+	/**
 	 * Helper method that determines whether the request is valid and should be handled or not.
 	 * @param request https://developers.cloudflare.com/workers/runtime-apis/request/
 	 * @returns boolean: whether or not request is valid, string: reason for invalid
 	 */
 	validateRequest(request: Request): [boolean, string, string] {
 		// check jwt exists
-		if (request.headers.get(HEADER_EXTENSION_JWT) == null) {
+		if (request.headers.get(HEADER_EXTENSION_JWT) == null && ENFORCE_JWT) {
 			return [false, "", "no jwt header provided"];
 		}
 		// check that an action exists
@@ -151,7 +174,10 @@ export default {
 			JSON.stringify(structuredResponse, null, 2),
 			{
 				headers: {
-					"content-type": "application/json;charset=UTF-8"
+					"content-type": "application/json;charset=UTF-8",
+					"access-control-allow-origin": "*",
+					"access-control-allow-methods": "*",
+					"access-control-allow-headers": "*"
 				}
 			}
 		)

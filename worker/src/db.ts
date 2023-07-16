@@ -1,4 +1,4 @@
-import AWS, { DynamoDB } from "aws-sdk"
+//import AWS, { DynamoDB } from "aws-sdk"
 
 export type DBPomodoro = {
     TwitchStreamerId: string,
@@ -32,11 +32,11 @@ export class Db {
     private static REGION = "us-west-2"
     private static TABLE = "Pomodoros";
 
-    private client: DynamoDB;
+    //private client: DynamoDB;
 
     constructor(awsAccessKey: string, awsSecretKey: string) {
-        const creds = new AWS.Credentials(awsAccessKey, awsSecretKey);
-        this.client = new DynamoDB({ credentials: creds, region: Db.REGION })
+        //const creds = new AWS.Credentials(awsAccessKey, awsSecretKey);
+        //this.client = new DynamoDB({ credentials: creds, region: Db.REGION })
     }
 
     /**
@@ -44,7 +44,7 @@ export class Db {
      * @param streamerId Twitch User ID of streamer.
      * @returns DBPomodoro
      */
-    public GetStreamPomodoros(streamerId: string): [boolean, DBPomodoro[]] {
+    public ListStreamPomodoros(streamerId: string): [boolean, DBPomodoro[]] {
         var params = {
             ExpressionAttributeValues: {
                 ':streamer': {S: streamerId},
@@ -55,6 +55,7 @@ export class Db {
         };
 
         let channelPomodoros: DBPomodoro[];
+        /*
         this.client.query(params, function(err, data) {
             if (err) {
                 console.log("Error", err);
@@ -69,7 +70,49 @@ export class Db {
                 });
             }
         });
+        */
         return [true, channelPomodoros!];
+    }
+
+    public ListStreamPomodorosDemo(streamerId: string): [boolean, DBPomodoro[]] {
+        const curTime = new Date();
+        const pomodoroState = {
+            Status: DBPomodoroStatus.Active,
+            EndsAt: Math.floor(new Date(curTime.getTime() +  (5 * 60000)).getTime() / 1000),
+            Tasks: [
+                {
+                    Status: DBPomodoroTaskStatus.InProgress,
+                    Title: "My second task"
+                },
+                {
+                    Status: DBPomodoroTaskStatus.Completed,
+                    Title: "My first task",
+                },
+                {
+                    Status: DBPomodoroTaskStatus.Awaiting,
+                    Title: "My third task"
+                }
+            ]
+        };
+
+        const pomos: DBPomodoro[] = [
+            {
+                TwitchStreamerId: "410885037",
+                TwitchUserId: "410885037",
+                PomodoroState: pomodoroState,
+            },
+            {
+                TwitchStreamerId: "410885037",
+                TwitchUserId: "40876073",
+                PomodoroState: pomodoroState,
+            },
+            {
+                TwitchStreamerId: "410885037",
+                TwitchUserId: "40876073",
+                PomodoroState: pomodoroState,
+            }
+        ];
+        return [true, pomos]
     }
 
     /**
@@ -85,13 +128,18 @@ export class Db {
                 'PomodoroState': {S: Db.pomodoroStateIntoJson(input.PomodoroState)},
             }
         }
-
+        /*
         this.client.putItem(params, function(err, data) {
             if (err) {
                 console.log("Error", err);
                 return false;
             }
         });
+        */
+        return true;
+    }
+
+    public PutStreamPomodoroDemo(input: DBPomodoro): boolean {
         return true;
     }
 
@@ -102,6 +150,12 @@ export class Db {
      */
     private static parsePomodoroState(pomodoroState: string): DBPomodoroState {
         // TODO: implement parsePomodoroState
+        const fake: DBPomodoroState = {
+            Status: DBPomodoroStatus.Active,
+            EndsAt: 0,
+            Tasks: [],
+        }
+        return fake
     }
 
     /**
@@ -111,6 +165,7 @@ export class Db {
      */
     private static pomodoroStateIntoJson(input: DBPomodoroState): string {
         // TODO: implement pomodoroStateIntoJson
+        return "";
     }
 
 }
